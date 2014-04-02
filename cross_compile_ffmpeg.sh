@@ -1030,7 +1030,7 @@ build_ffmpeg() {
   local output_dir="ffmpeg_git"
 
   # FFmpeg + libav compatible options
-  local extra_configure_opts="--enable-libsoxr --enable-fontconfig --enable-libass --enable-libutvideo --enable-libbluray --enable-iconv --enable-libtwolame --extra-cflags=-DLIBTWOLAME_STATIC --enable-libzvbi --enable-libcaca --enable-libmodplug --extra-libs=-lstdc++ --extra-libs=-lpng --enable-libvidstab" # --enable-libx265 non xp friendly
+  local extra_configure_opts="--enable-libsoxr --enable-fontconfig --enable-libass --enable-libbluray --enable-iconv --enable-libtwolame --extra-cflags=-DLIBTWOLAME_STATIC --enable-libcaca --enable-libmodplug --extra-libs=-lstdc++ --extra-libs=-lpng --enable-libvidstab" # --enable-libx265 non xp friendly
 
   if [[ $type = "libav" ]]; then
     # libav [ffmpeg fork]  has a few missing options?
@@ -1066,7 +1066,7 @@ build_ffmpeg() {
 
   config_options="--arch=$arch --target-os=mingw32 --cross-prefix=$cross_prefix --pkg-config=pkg-config --enable-gpl --enable-libx264 --enable-avisynth --enable-libxvid --enable-libmp3lame --enable-version3 --enable-zlib --enable-librtmp --enable-libvorbis --enable-libtheora --enable-libspeex --enable-libopenjpeg --enable-gnutls --enable-libgsm --enable-libfreetype --enable-libopus --disable-w32threads --enable-frei0r --enable-filter=frei0r --enable-libvo-aacenc --enable-bzlib --enable-libxavs --extra-cflags=-DPTW32_STATIC_LIB --enable-libopencore-amrnb --enable-libopencore-amrwb --enable-libvo-amrwbenc --enable-libschroedinger --enable-libvpx --enable-libilbc --prefix=$mingw_w64_x86_64_prefix $extra_configure_opts --extra-cflags=$CFLAGS" # other possibilities: --enable-w32threads --enable-libflite
   if [[ "$non_free" = "y" ]]; then
-    config_options="$config_options --enable-nonfree --enable-libfdk-aac --enable-libfaac" # -- faac deemed too poor quality and becomes the default -- add it in and uncomment the build_faac line to include it 
+    config_options="$config_options --enable-nonfree --enable-libfaac" # -- faac deemed too poor quality and becomes the default -- add it in and uncomment the build_faac line to include it 
     # other possible options: --enable-openssl --enable-libaacplus
   else
     config_options="$config_options"
@@ -1112,11 +1112,11 @@ build_dependencies() {
   build_libpng # for openjpeg, needs zlib
   build_gmp # for libnettle
   build_libnettle # needs gmp
-  build_iconv # mplayer I think needs it for freetype [just it though], vlc also wants it.  looks like ffmpeg can use it too...not sure what for :)
+  #build_iconv # mplayer I think needs it for freetype [just it though], vlc also wants it.  looks like ffmpeg can use it too...not sure what for :)
   build_gnutls # needs libnettle, can use iconv it appears
 
   build_frei0r
-  build_libutvideo
+  #build_libutvideo # Not YSTV
   #build_libflite # too big for the distro...
   build_libgsm
   build_sdl # needed for ffplay to be created
@@ -1130,10 +1130,10 @@ build_dependencies() {
   build_orc
   build_libschroedinger # needs orc
   build_libbluray
-  build_libjpeg_turbo # mplayer can use this, VLC qt might need it?
+  #build_libjpeg_turbo # mplayer can use this, VLC qt might need it?
   build_libdvdcss
-  build_libdvdread # vlc, possibly mplayer use it. needs dvdcss
-  build_libdvdnav # vlc, possibly mplayer
+  #build_libdvdread # vlc, possibly mplayer use it. needs dvdcss
+  #build_libdvdnav # vlc, possibly mplayer
   build_libxvid
   build_libxavs
   build_libsoxr
@@ -1155,7 +1155,7 @@ build_dependencies() {
   build_libass # needs freetype, needs fribidi, needs fontconfig
   build_libopenjpeg
   if [[ "$non_free" = "y" ]]; then
-    build_fdk_aac
+    # build_fdk_aac # Not YSTV
     build_faac # not included for now, too poor quality :)
     # build_libaacplus # if you use it, conflicts with other AAC encoders <sigh>, so disabled :)
   fi
@@ -1218,7 +1218,7 @@ while true; do
       --build-shared-ffmpeg=n 
       --build-static-ffmpeg=y 
       --gcc-cpu-count=1 [number of cpu cores set it higher than 1 if you have multiple cores and > 1GB RAM, this speeds up cross compiler build. FFmpeg build uses number of cores regardless.] 
-      --disable-nonfree=y (set to n to include nonfree like libfdk-aac) 
+      --disable-nonfree=y (set to n to include nonfree like lib) 
       --sandbox-ok=n [skip sandbox prompt if y] 
       --rebuild-compilers=y (prompts you which compilers to build, even if you already have some)
       --defaults|-d [skip all prompts, just build ffmpeg static with some reasonable defaults like no git updates] 
