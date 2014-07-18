@@ -357,34 +357,79 @@ generic_configure_make_install() {
 }
 
 build_libx265() {
-  local old_hg_version
-  if [[ -d x265 ]]; then
-    cd x265
-    if [[ $git_get_latest = "y" ]]; then
-      echo "doing hg pull -u x265"
-      old_hg_version=`hg --debug id -i`
-      hg pull -u || exit 1
+  if [[ $prefer_stable = "n" ]]; then
+    local old_hg_version
+    if [[ -d x265 ]]; then
+      cd x265
+      if [[ $git_get_latest = "y" ]]; then
+        echo "doing hg pull -u x265"
+        old_hg_version=`hg --debug id -i`
+        hg pull -u || exit 1
+        hg update || exit 1 # guess you need this too if no new changes are brought down [what the...]
+      else
+        echo "not doing hg pull x265"
+        old_hg_version=`hg --debug id -i`
+      fi
     else
-      echo "not doing hg pull x265"
+      hg clone https://bitbucket.org/multicoreware/x265 || exit 1
+      cd x265
+      old_hg_version=none-yet
+    fi
+    cd source
+
+    # hg checkout 9b0c9b # no longer needed, but once was...
+
+    local new_hg_version=`hg --debug id -i`  
+    if [[ "$old_hg_version" != "$new_hg_version" ]]; then
+      echo "got upstream hg changes, forcing rebuild...x265"
+      rm already*
+    else
+      echo "still at hg $new_hg_version x265"
     fi
   else
-    hg clone https://bitbucket.org/multicoreware/x265 || exit 1
-    cd x265
-    old_hg_version=`hg --debug id -i`
-  fi    
-  cd source
+    local old_hg_version
+    if [[ -d x265 ]]; then
+      cd x265
+      if [[ $git_get_latest = "y" ]]; then
+        echo "doing hg pull -u x265"
+        old_hg_version=`hg --debug id -i`
+        hg pull -u || exit 1
+        hg update || exit 1 # guess you need this too if no new changes are brought down [what the...]
+      else
+        echo "not doing hg pull x265"
+        old_hg_version=`hg --debug id -i`
+      fi
+    else
+      hg clone https://bitbucket.org/multicoreware/x265 -r stable || exit 1
+      cd x265
+      old_hg_version=none-yet
+    fi
+    cd source
 
-  # hg checkout 9b0c9b # no longer needed...
+    # hg checkout 9b0c9b # no longer needed, but once was...
 
-  local new_hg_version=`hg --debug id -i`  
-  if [[ "$old_hg_version" != "$new_hg_version" ]]; then
-    echo "got upstream hg changes, forcing rebuild...x265"
-    rm already*
-  else
-    echo "still at hg $new_hg_version x265"
+    local new_hg_version=`hg --debug id -i`  
+    if [[ "$old_hg_version" != "$new_hg_version" ]]; then
+      echo "got upstream hg changes, forcing rebuild...x265"
+      rm already*
+    else
+      echo "still at hg $new_hg_version x265"
+    fi
   fi
-
-  do_cmake "-DENABLE_SHARED=OFF"
+  
+  local cmake_params="-DENABLE_SHARED=OFF"
+  if [[ $high_bitdepth == "y" ]]; then
+    cmake_params="$cmake_params -DHIGH_BIT_DEPTH=ON" # Enable 10 bits (main10) and 12 bits (???) per pixels profiles.
+    if grep "DHIGH_BIT_DEPTH=0" CMakeFiles/cli.dir/flags.make; then
+      rm already_ran_cmake_* #Last build was not high bitdepth. Forcing rebuild.
+    fi
+  else
+    if grep "DHIGH_BIT_DEPTH=1" CMakeFiles/cli.dir/flags.make; then
+      rm already_ran_cmake_* #Last build was high bitdepth. Forcing rebuild.
+    fi
+  fi
+  
+  do_cmake "$cmake_params" 
   do_make_install
   cd ../..
 }
@@ -395,6 +440,18 @@ build_libx264() {
   do_git_checkout "http://repo.or.cz/r/x264.git" "x264" "origin/stable"
   cd x264
   local configure_flags="--host=$host_target --enable-static --cross-prefix=$cross_prefix --prefix=$mingw_w64_x86_64_prefix --extra-cflags=-DPTW32_STATIC_LIB --enable-debug" # --enable-win32thread --enable-debug shouldn't hurt us since ffmpeg strips it anyway I think
+  
+  if [[ $high_bitdepth == "y" ]]; then
+    configure_flags="$configure_flags --bit-depth=10" # Enable 10 bits (main10) per pixels profile.
+    if grep -q "HIGH_BIT_DEPTH 0" config.h; then
+      rm already_configured_* #Last build was not high bitdepth. Forcing reconfigure.
+    fi
+  else
+    if grep -q "HIGH_BIT_DEPTH 1" config.h; then
+      rm already_configured_* #Last build was high bitdepth. Forcing reconfigure.
+    fi
+  fi
+  
   if [[ $x264_profile_guided = y ]]; then
     # TODO more march=native here?
     # TODO profile guided here option, with wine?
@@ -421,7 +478,11 @@ build_librtmp() {
   do_make_install "CRYPTO=GNUTLS OPT=-O2 CROSS_COMPILE=$cross_prefix SHARED=no prefix=$mingw_w64_x86_64_prefix"
   #make install CRYPTO=GNUTLS OPT='-O2 -g' "CROSS_COMPILE=$cross_prefix" SHARED=no "prefix=$mingw_w64_x86_64_prefix" || exit 1
   sed -i 's/-lrtmp -lz/-lrtmp -lwinmm -lz/' "$PKG_CONFIG_PATH/librtmp.pc"
-  cd ../..
+  cd ..
+   # TODO do_make here instead...
+   make SYS=mingw CRYPTO=GNUTLS OPT=-O2 CROSS_COMPILE=$cross_prefix SHARED=no LIB_GNUTLS="`pkg-config --libs gnutls` -lz" || exit 1
+  cd ..
+
 }
 
 build_qt() {
@@ -485,10 +546,13 @@ build_libopenjpeg() {
 }
 
 build_libvpx() {
-#  download_and_unpack_file http://webm.googlecode.com/files/libvpx-v1.3.0.tar.bz2 libvpx-v1.3.0
-#  cd libvpx-v1.3.0
-  do_git_checkout https://git.chromium.org/git/webm/libvpx.git "libvpx_git"
-  cd libvpx_git
+  if [[ $prefer_stable = "y" ]]; then
+    download_and_unpack_file http://webm.googlecode.com/files/libvpx-v1.3.0.tar.bz2 libvpx-v1.3.0
+    cd libvpx-v1.3.0
+  else
+    do_git_checkout https://git.chromium.org/git/webm/libvpx.git "libvpx_git"
+    cd libvpx_git
+  fi
   export CROSS="$cross_prefix"
   if [[ "$bits_target" = "32" ]]; then
     do_configure "--extra-cflags=-DPTW32_STATIC_LIB --target=x86-win32-gcc --prefix=$mingw_w64_x86_64_prefix --enable-static --disable-shared"
@@ -673,20 +737,20 @@ build_gmp() {
 }
 
 build_orc() {
-  generic_download_and_install  http://code.entropywave.com/download/orc/orc-0.4.18.tar.gz orc-0.4.18
+  generic_download_and_install http://download.videolan.org/contrib/orc-0.4.18.tar.gz orc-0.4.18
 }
 
 build_libxml2() {
-  generic_download_and_install ftp://xmlsoft.org/libxml2/libxml2-2.9.0.tar.gz libxml2-2.9.0
+  generic_download_and_install ftp://xmlsoft.org/libxml2/libxml2-2.9.0.tar.gz libxml2-2.9.0 "--without-python"
 }
 
 build_libbluray() {
   generic_download_and_install ftp://ftp.videolan.org/pub/videolan/libbluray/0.5.0/libbluray-0.5.0.tar.bz2 libbluray-0.5.0 "--without-libxml2"
-  sed -i 's/-lbluray.*$/-lbluray -lfreetype -lexpat -lz/' "$PKG_CONFIG_PATH/libbluray.pc" # not sure...is this a blu-ray bug, or VLC's problem in not pulling freetype's .pc file? or our problem with not using pkg-config --static ...
+  sed -i 's/-lbluray.*$/-lbluray -lfreetype -lexpat -lz -lbz2/' "$PKG_CONFIG_PATH/libbluray.pc" # not sure...is this a blu-ray bug, or VLC's problem in not pulling freetype's .pc file? or our problem with not using pkg-config --static ...
 }
 
 build_libschroedinger() {
-  download_and_unpack_file http://diracvideo.org/download/schroedinger/schroedinger-1.0.11.tar.gz schroedinger-1.0.11
+  download_and_unpack_file http://download.videolan.org/contrib/schroedinger-1.0.11.tar.gz schroedinger-1.0.11
   cd schroedinger-1.0.11
     generic_configure
     sed -i 's/testsuite//' Makefile
@@ -813,7 +877,8 @@ build_iconv() {
 
 build_freetype() {
   generic_download_and_install http://download.savannah.gnu.org/releases/freetype/freetype-2.5.3.tar.gz freetype-2.5.3 "--with-png=no"
-  sed -i 's/Libs: -L${libdir} -lfreetype.*/Libs: -L${libdir} -lfreetype -lexpat -lz/' "$PKG_CONFIG_PATH/freetype2.pc" # this should not need expat, but...I think maybe people use fontconfig's wrong and that needs expat? huh wuh? or dependencies are setup wrong in some .pc file?
+  sed -i 's/Libs: -L${libdir} -lfreetype.*/Libs: -L${libdir} -lfreetype -lexpat -lz -lbz2/' "$PKG_CONFIG_PATH/freetype2.pc" # this should not need expat, but...I think maybe people use fontconfig's wrong and that needs expat? huh wuh? or dependencies are setup wrong in some .pc file?
+  # possibly don't need the bz2 in there [bluray adds its own]...
 }
 
 build_vo_aacenc() {
@@ -910,15 +975,20 @@ build_vidstab() {
 build_vlc() {
   build_qt # needs libjpeg [?]
   cpu_count=1 # not wig out on .rc.lo files etc.
-  do_git_checkout https://github.com/videolan/vlc.git vlc # vlc git master seems to be unstable and break the build and not test for windows often, so specify a known working revision...
-  cd vlc
-  #do_git_checkout https://github.com/rdp/vlc.git vlc_rdp # till this thing stabilizes...
-  #cd vlc_rdp
+  #do_git_checkout https://github.com/videolan/vlc.git vlc_git # vlc git master seems to be unstable and break the build and not test for windows often, so specify a known working revision...
+  #cd vlc_git
+
+  do_git_checkout https://github.com/rdp/vlc.git vlc_rdp # till this thing stabilizes...
+  cd vlc_rdp
   
+  if [[ "$non_free" = "y" ]]; then
+  apply_patch https://raw.githubusercontent.com/gcsx/ffmpeg-windows-build-helpers/patch-5/patches/priorize_avcodec.patch
+  fi
+
   if [[ ! -f "configure" ]]; then
     ./bootstrap
   fi 
-  do_configure "--disable-x265 --disable-libgcrypt --disable-a52 --host=$host_target --disable-lua --disable-mad --enable-qt --disable-sdl --disable-mod" # don't have lua mingw yet, etc. [vlc has --disable-sdl [?]] x265 disabled until we care enough... TODO reneable bluray once I use vlc git master if it works... [not sure what's wrong with libmod]
+  do_configure "--disable-x265 --disable-libgcrypt --disable-a52 --host=$host_target --disable-lua --disable-mad --enable-qt --disable-sdl --disable-mod" # don't have lua mingw yet, etc. [vlc has --disable-sdl [?]] x265 disabled until we care enough... Looks like the bluray problem was related to the BLURAY_LIBS definition. [not sure what's wrong with libmod]
   for file in `find . -name *.exe`; do
     rm $file # try to force a rebuild...though there are tons of .a files we aren't rebuilding :|
   done
@@ -942,12 +1012,9 @@ build_vlc() {
 }
 
 build_mplayer() {
-  download_and_unpack_file http://sourceforge.net/projects/mplayer-edl/files/mplayer-checkout-snapshot.tar.bz2/download mplayer-checkout-2013-09-11 # my own snapshot since mplayer seems to delete old file :\
-  cd mplayer-checkout-2013-09-11
-  do_git_checkout https://github.com/FFmpeg/FFmpeg ffmpeg bbcaf25d4 # random, known to work revision with 2013-09-11
-  # download_and_unpack_file http://www.mplayerhq.hu/MPlayer/releases/mplayer-export-snapshot.tar.bz2 mplayer-export-2014-05-19
-  # cd mplayer-export-2014-05-19
-  # do_git_checkout https://github.com/FFmpeg/FFmpeg ffmpeg # TODO some specific revision here?
+  download_and_unpack_file http://sourceforge.net/projects/mplayer-edl/files/mplayer-export-snapshot.2014-05-19.tar.bz2/download mplayer-export-2014-05-19
+  cd mplayer-export-2014-05-19
+  do_git_checkout https://github.com/FFmpeg/FFmpeg ffmpeg d43c303038e9bd
   export LDFLAGS='-lpthread -ldvdread -ldvdcss' # not compat with newer dvdread possibly? huh wuh?
   export CFLAGS=-DHAVE_DVDCSS_DVDCSS_H
   do_configure "--enable-cross-compile --host-cc=cc --cc=${cross_prefix}gcc --windres=${cross_prefix}windres --ranlib=${cross_prefix}ranlib --ar=${cross_prefix}ar --as=${cross_prefix}as --nm=${cross_prefix}nm --enable-runtime-cpudetection --extra-cflags=$CFLAGS --with-dvdnav-config=$mingw_w64_x86_64_prefix/bin/dvdnav-config --disable-dvdread-internal --disable-libdvdcss-internal --disable-w32threads --enable-pthreads --extra-libs=-lpthread --enable-debug" # haven't reported the ldvdcss thing, think it's to do with possibly it not using dvdread.pc [?] XXX check with trunk
@@ -1065,7 +1132,7 @@ build_ffmpeg() {
 
   config_options="--arch=$arch --target-os=mingw32 --cross-prefix=$cross_prefix --pkg-config=pkg-config --enable-gpl --enable-libx264 --enable-avisynth --enable-libxvid --enable-libmp3lame --enable-version3 --enable-zlib --enable-librtmp --enable-libvorbis --enable-libtheora --enable-libspeex --enable-libopenjpeg --enable-gnutls --enable-libgsm --enable-libfreetype --enable-libopus --disable-w32threads --enable-frei0r --enable-filter=frei0r --enable-libvo-aacenc --enable-bzlib --enable-libxavs --extra-cflags=-DPTW32_STATIC_LIB --enable-libopencore-amrnb --enable-libopencore-amrwb --enable-libvo-amrwbenc --enable-libschroedinger --enable-libvpx --enable-libilbc --prefix=$mingw_w64_x86_64_prefix $extra_configure_opts --extra-cflags=$CFLAGS" # other possibilities: --enable-w32threads --enable-libflite
   if [[ "$non_free" = "y" ]]; then
-    config_options="$config_options --enable-nonfree --enable-libfaac" # -- faac deemed too poor quality and becomes the default -- add it in and uncomment the build_faac line to include it 
+    config_options="$config_options --enable-nonfree --enable-libfdk-aac --disable-libfaac --disable-decoder=aac" # To use fdk-aac in VLC, we need to change FFMPEG's default (faac), but I haven't found how to do that... So I disabled it. This could be an new option for the script? -- faac deemed too poor quality and becomes the default -- add it in and uncomment the build_faac line to include it 
     # other possible options: --enable-openssl --enable-libaacplus
   else
     config_options="$config_options"
@@ -1084,8 +1151,12 @@ build_ffmpeg() {
   echo "doing ffmpeg make $(pwd)"
   do_make
   do_make_install # install ffmpeg to get libavcodec libraries to be used as dependencies for other things, like vlc [XXX make this a parameter?] or install shared to a local dir
-  sed -i 's/-lavutil -lm.*/-lavutil -lm -lpthread/' "$PKG_CONFIG_PATH/libavutil.pc" # unreported as yet...
-  sed -i 's/-lswresample -lm.*/-lswresample -lm -lsoxr/' "$PKG_CONFIG_PATH/libswresample.pc" # unreported as yet...
+
+  # build ismindex.exe, too, just for fun 
+  make tools/ismindex.exe
+
+  sed -i 's/-lavutil -lm.*/-lavutil -lm -lpthread/' "$PKG_CONFIG_PATH/libavutil.pc" # XXX patch ffmpeg
+  sed -i 's/-lswresample -lm.*/-lswresample -lm -lsoxr/' "$PKG_CONFIG_PATH/libswresample.pc" # XXX patch ffmpeg
   echo "Done! You will find $bits_target bit $shared binaries in $(pwd)/{ffmpeg,ffprobe,ffplay,avconv,avprobe}*.exe"
   cd ..
 }
@@ -1130,7 +1201,7 @@ build_dependencies() {
   build_libtheora # needs libvorbis, libogg
   build_orc
   build_libschroedinger # needs orc
-  build_freetype
+  build_freetype # uses bz2/zlib seemingly
   build_libexpat
   build_libxml2
   build_libbluray # needs libxml2, freetype
@@ -1211,6 +1282,7 @@ build_mp4box=n
 build_mplayer=n
 build_vlc=n
 git_get_latest=y
+prefer_stable=y
 unset CFLAGS # I think this resets it...we don't want any linux CFLAGS seeping through...they can set this via --cflags=  if they want it set to anything
 original_cflags= # no export needed, this is just a local copy
 
@@ -1233,6 +1305,8 @@ while true; do
       --build-libav=n [builds libav.exe, an FFmpeg fork] 
       --cflags= [default is empty, compiles for generic cpu, see README]
       --git-get-latest=y [do a git pull for latest code from repositories like FFmpeg--can force a rebuild if changes are detected]
+      --prefer-stable=y build a few libraries from releases instead of git master
+      --high-bitdepth=y Enable high bit depth for x264 (10 bits) and x265 (10 and 12 bits, x64 build. Not officially supported on x86 (win32), but can be enabled by editing x265/source/CMakeLists.txt. See line 155).
        "; exit 0 ;;
     --sandbox-ok=* ) sandbox_ok="${1#*=}"; shift ;;
     --gcc-cpu-count=* ) gcc_cpu_count="${1#*=}"; shift ;;
@@ -1259,6 +1333,8 @@ while true; do
     --build-ffmpeg-static=* ) build_ffmpeg_static="${1#*=}"; shift ;;
     --build-ffmpeg-shared=* ) build_ffmpeg_shared="${1#*=}"; shift ;;
     --rebuild-compilers=* ) rebuild_compilers="${1#*=}"; shift ;;
+    --prefer-stable=* ) prefer_stable="${1#*=}"; shift ;;
+    --high-bitdepth=* ) high_bitdepth="${1#*=}"; shift ;;
     -- ) shift; break ;;
     -* ) echo "Error, unknown option: '$1'."; exit 1 ;;
     * ) break ;;
