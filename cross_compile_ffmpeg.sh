@@ -73,54 +73,54 @@ intro() {
   the sandbox directory, since it will have some hard coded paths in there.
   You can, of course, rebuild ffmpeg from within it, etc.
 EOL
-  if [[ $sandbox_ok != 'y' ]]; then
-    yes_no_sel "Is ./sandbox ok (requires ~ 5GB space) [Y/n]?" "y"
-    if [[ "$user_input" = "n" ]]; then
-      exit 1
-    fi
-  fi
+#  if [[ $sandbox_ok != 'y' ]]; then
+#    yes_no_sel "Is ./sandbox ok (requires ~ 5GB space) [Y/n]?" "y"
+#    if [[ "$user_input" = "n" ]]; then
+#      exit 1
+#    fi
+#  fi
   mkdir -p "$cur_dir"
   cd "$cur_dir"
-  if [[ $disable_nonfree = "y" ]]; then
-    non_free="n"
-  else
-    if  [[ $disable_nonfree = "n" ]]; then
-      non_free="y" 
-    else
-      yes_no_sel "Would you like to include non-free (non GPL compatible) libraries, like many aac encoders
-The resultant binary will not be distributable, but might be useful for in-house use. Include non-free [y/N]?" "n"
-      non_free="$user_input" # save it away
-    fi
-  fi
+#  if [[ $disable_nonfree = "y" ]]; then
+#    non_free="n"
+#  else
+#    if  [[ $disable_nonfree = "n" ]]; then
+  non_free="y" 
+#    else
+#      yes_no_sel "Would you like to include non-free (non GPL compatible) libraries, like many aac encoders
+#The resultant binary will not be distributable, but might be useful for in-house use. Include non-free [y/N]?" "n"
+#      non_free="$user_input" # save it away
+#    fi
+#  fi
 }
 
 pick_compiler_flavors() {
 
-  while [[ "$build_choice" != [1-4] ]]; do
-    if [[ -n "${unknown_opts[@]}" ]]; then
-      echo -n 'Unknown option(s)'
-      for unknown_opt in "${unknown_opts[@]}"; do
-        echo -n " '$unknown_opt'"
-      done
-      echo ', ignored.'; echo
-    fi
-    cat <<'EOF'
-What version of MinGW-w64 would you like to build or update?
-  1. Both Win32 and Win64
-  2. Win32 (32-bit only)
-  3. Win64 (64-bit only)
-  4. Exit
-EOF
-    echo -n 'Input your choice [1-5]: '
-    read build_choice
-  done
-  case "$build_choice" in
-  1 ) build_choice=multi ;;
-  2 ) build_choice=win32 ;;
-  3 ) build_choice=win64 ;;
-  4 ) echo "exiting"; exit 0 ;;
-  * ) clear;  echo 'Your choice was not valid, please try again.'; echo ;;
-  esac
+#  while [[ "$build_choice" != [1-4] ]]; do
+#    if [[ -n "${unknown_opts[@]}" ]]; then
+#      echo -n 'Unknown option(s)'
+#      for unknown_opt in "${unknown_opts[@]}"; do
+#        echo -n " '$unknown_opt'"
+#      done
+#      echo ', ignored.'; echo
+#    fi
+#    cat <<'EOF'
+#What version of MinGW-w64 would you like to build or update?
+#  1. Both Win32 and Win64
+#  2. Win32 (32-bit only)
+#  3. Win64 (64-bit only)
+#  4. Exit
+#EOF
+#    echo -n 'Input your choice [1-5]: '
+#    read build_choice
+#  done
+#  case "$build_choice" in
+#  1 ) build_choice=multi ;;
+#  2 ) build_choice=win32 ;;
+build_choice=win64
+#  4 ) echo "exiting"; exit 0 ;;
+#  * ) clear;  echo 'Your choice was not valid, please try again.'; echo ;;
+#  esac
 }
 
 install_cross_compiler() {
@@ -1096,7 +1096,7 @@ build_ffmpeg() {
   local output_dir="ffmpeg_git"
 
   # FFmpeg + libav compatible options
-  local extra_configure_opts="--enable-libsoxr --enable-fontconfig --enable-libass --enable-libbluray --enable-iconv --enable-libtwolame --extra-cflags=-DLIBTWOLAME_STATIC --enable-libcaca --enable-libmodplug --extra-libs=-lstdc++ --extra-libs=-lpng --enable-libvidstab" # --enable-libx265 non xp friendly
+  local extra_configure_opts="--enable-iconv" # --enable-libx265 non xp friendly
 
   if [[ $type = "libav" ]]; then
     # libav [ffmpeg fork]  has a few missing options?
@@ -1130,7 +1130,7 @@ build_ffmpeg() {
 
 # add --extra-cflags=$CFLAGS, though redundant, just so that FFmpeg lists what it used in its "info" output
 
-  config_options="--arch=$arch --target-os=mingw32 --cross-prefix=$cross_prefix --pkg-config=pkg-config --enable-gpl --enable-libx264 --enable-avisynth --enable-libxvid --enable-libmp3lame --enable-version3 --enable-zlib --enable-librtmp --enable-libvorbis --enable-libtheora --enable-libspeex --enable-libopenjpeg --enable-gnutls --enable-libgsm --enable-libfreetype --enable-libopus --disable-w32threads --enable-frei0r --enable-filter=frei0r --enable-libvo-aacenc --enable-bzlib --enable-libxavs --extra-cflags=-DPTW32_STATIC_LIB --enable-libopencore-amrnb --enable-libopencore-amrwb --enable-libvo-amrwbenc --enable-libschroedinger --enable-libvpx --enable-libilbc --prefix=$mingw_w64_x86_64_prefix $extra_configure_opts --extra-cflags=$CFLAGS" # other possibilities: --enable-w32threads --enable-libflite
+  config_options="--arch=$arch --target-os=mingw32 --cross-prefix=$cross_prefix --pkg-config=pkg-config --enable-gpl --enable-libx264 --enable-version3 --enable-zlib --enable-librtmp --enable-gnutls  --disable-w32threads --prefix=$mingw_w64_x86_64_prefix $extra_configure_opts --extra-cflags=$CFLAGS" # other possibilities: --enable-w32threads --enable-libflite
   if [[ "$non_free" = "y" ]]; then
     config_options="$config_options --enable-nonfree --enable-libfdk-aac --disable-libfaac --disable-decoder=aac" # To use fdk-aac in VLC, we need to change FFMPEG's default (faac), but I haven't found how to do that... So I disabled it. This could be an new option for the script? -- faac deemed too poor quality and becomes the default -- add it in and uncomment the build_faac line to include it 
     # other possible options: --enable-openssl --enable-libaacplus
@@ -1178,59 +1178,59 @@ find_all_build_exes() {
 build_dependencies() {
   echo "PKG_CONFIG_PATH=$PKG_CONFIG_PATH" # debug
   #build_win32_pthreads # vpx etc. depend on this--provided by the compiler build script now, so shouldn't have to build our own
-  build_libdl # ffmpeg's frei0r implentation needs this
+  #build_libdl # ffmpeg's frei0r implentation needs this
   build_zlib # rtmp depends on it [as well as ffmpeg's optional but handy --enable-zlib]
   build_bzlib2 # in case someone wants it [ffmpeg uses it]
-  build_libpng # for openjpeg, needs zlib
+  #build_libpng # for openjpeg, needs zlib
   build_gmp # for libnettle
   build_libnettle # needs gmp
   build_iconv # mplayer I think needs it for freetype [just it though], vlc also wants it.  looks like ffmpeg can use it too...not sure what for :)
   build_gnutls # needs libnettle, can use iconv it appears
 
-  build_frei0r
+  #build_frei0r
   #build_libutvideo # Not YSTV
   #build_libflite # too big for the ffmpeg distro...
-  build_libgsm
-  build_sdl # needed for ffplay to be created
-  build_libopus
-  build_libopencore
-  build_libogg
+  #build_libgsm
+  #build_sdl # needed for ffplay to be created
+  #build_libopus
+  #build_libopencore
+  #build_libogg
   
-  build_libspeex # needs libogg for exe's
-  build_libvorbis # needs libogg
-  build_libtheora # needs libvorbis, libogg
-  build_orc
-  build_libschroedinger # needs orc
-  build_freetype # uses bz2/zlib seemingly
-  build_libexpat
-  build_libxml2
-  build_libbluray # needs libxml2, freetype
-  build_libjpeg_turbo # mplayer can use this, VLC qt might need it? [replaces libjpeg]
-  build_libdvdcss
-  build_libdvdread # vlc, mplayer use it. needs dvdcss
-  build_libdvdnav # vlc, mplayer use this
-  build_libxvid
-  build_libxavs
-  build_libsoxr
+  #build_libspeex # needs libogg for exe's
+  #build_libvorbis # needs libogg
+  #build_libtheora # needs libvorbis, libogg
+  #build_orc
+  #build_libschroedinger # needs orc
+  #build_freetype # uses bz2/zlib seemingly
+  #build_libexpat
+  #build_libxml2
+  #build_libbluray # needs libxml2, freetype
+  #build_libjpeg_turbo # mplayer can use this, VLC qt might need it? [replaces libjpeg]
+  #build_libdvdcss
+  #build_libdvdread # vlc, mplayer use it. needs dvdcss
+  #build_libdvdnav # vlc, mplayer use this
+  #build_libxvid
+  #build_libxavs
+  #build_libsoxr
   build_libx264
-  build_libx265
-  build_lame
-  build_twolame
-  build_vidstab
-  build_libcaca
-  build_libmodplug # ffmepg and vlc can use this
-  build_zvbi
-  build_libvpx
-  build_vo_aacenc
+  #build_libx265
+  #build_lame
+  #build_twolame
+  #build_vidstab
+  #build_libcaca
+  #build_libmodplug # ffmepg and vlc can use this
+  #build_zvbi
+  #build_libvpx
+  #build_vo_aacenc
 
-  build_libilbc
-  build_fontconfig # needs expat, might need freetype, can use iconv, but I believe doesn't currently
-  build_libfribidi
-  build_libass # needs freetype, needs fribidi, needs fontconfig
-  build_libopenjpeg
+  #build_libilbc
+  #build_fontconfig # needs expat, might need freetype, can use iconv, but I believe doesn't currently
+  #build_libfribidi
+  #build_libass # needs freetype, needs fribidi, needs fontconfig
+  #build_libopenjpeg
   if [[ "$non_free" = "y" ]]; then
-    # build_fdk_aac # Not YSTV
-    build_faac # not included for now, too poor quality :)
+    build_fdk_aac
+    # build_faac # not included for now, too poor quality :)
     # build_libaacplus # if you use it, conflicts with other AAC encoders <sigh>, so disabled :)
   fi
   # build_openssl # hopefully do not need it anymore, since we use gnutls everywhere, so just don't even build it...
