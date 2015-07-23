@@ -91,54 +91,12 @@ intro() {
   the sandbox directory, since it will have some hard coded paths in there.
   You can, of course, rebuild ffmpeg from within it, etc.
 EOL
-#  if [[ $sandbox_ok != 'y' ]]; then
-#    yes_no_sel "Is ./sandbox ok (requires ~ 5GB space) [Y/n]?" "y"
-#    if [[ "$user_input" = "n" ]]; then
-#      exit 1
-#    fi
-#  fi
   mkdir -p "$cur_dir"
   cd "$cur_dir"
-#  if [[ $disable_nonfree = "y" ]]; then
-#    non_free="n"
-#  else
-#    if  [[ $disable_nonfree = "n" ]]; then
-  non_free="y" 
-#    else
-#      yes_no_sel "Would you like to include non-free (non GPL compatible) libraries, like many aac encoders
-#The resultant binary will not be distributable, but might be useful for in-house use. Include non-free [y/N]?" "n"
-#      non_free="$user_input" # save it away
-#    fi
-#  fi
 }
 
 pick_compiler_flavors() {
-
-#  while [[ "$build_choice" != [1-4] ]]; do
-#    if [[ -n "${unknown_opts[@]}" ]]; then
-#      echo -n 'Unknown option(s)'
-#      for unknown_opt in "${unknown_opts[@]}"; do
-#        echo -n " '$unknown_opt'"
-#      done
-#      echo ', ignored.'; echo
-#    fi
-#    cat <<'EOF'
-#What version of MinGW-w64 would you like to build or update?
-#  1. Both Win32 and Win64
-#  2. Win32 (32-bit only)
-#  3. Win64 (64-bit only)
-#  4. Exit
-#EOF
-#    echo -n 'Input your choice [1-5]: '
-#    read build_choice
-#  done
-#  case "$build_choice" in
-#  1 ) build_choice=multi ;;
-#  2 ) build_choice=win32 ;;
 build_choice=win64
-#  4 ) echo "exiting"; exit 0 ;;
-#  * ) clear;  echo 'Your choice was not valid, please try again.'; echo ;;
-#  esac
 }
 
 install_cross_compiler() {
@@ -783,13 +741,6 @@ build_libfribidi() {
     generic_configure
     do_make_and_make_install
   cd ..
-
-  #do_git_checkout http://anongit.freedesktop.org/git/fribidi/fribidi.git fribidi_git
-  #cd fribidi_git
-  #  ./bootstrap # couldn't figure out how to make this work...
-  #  generic_configure
-  #  do_make_and_make_install
-  #cd ..
 }
 
 build_libass() {
@@ -1110,11 +1061,6 @@ build_vlc() {
   cd vlc_git
   apply_patch https://raw.githubusercontent.com/rdp/ffmpeg-windows-build-helpers/master/patches/vlc_localtime_s.patch # git revision needs it...
 
-  # outdated apparently...
-  #if [[ "$non_free" = "y" ]]; then
-  #  apply_patch https://raw.githubusercontent.com/gcsx/ffmpeg-windows-build-helpers/patch-5/patches/priorize_avcodec.patch
-  #fi
-
   if [[ ! -f "configure" ]]; then
     ./bootstrap
   fi 
@@ -1126,7 +1072,6 @@ build_vlc() {
   rm already_ran_make* # try to force re-link just in case...
   do_make
   # do some gymnastics to avoid building the mozilla plugin for now [couldn't quite get it to work]
-  #sed -i.bak 's_git://git.videolan.org/npapi-vlc.git_https://github.com/rdp/npapi-vlc.git_' Makefile # this wasn't enough...
   sed -i.bak "s/package-win-common: package-win-install build-npapi/package-win-common: package-win-install/" Makefile
   sed -i.bak "s/.*cp .*builddir.*npapi-vlc.*//g" Makefile
   make package-win-common # not do_make, fails still at end, plus this way we get new vlc.exe's
@@ -1197,15 +1142,6 @@ build_libMXF() {
   cd libMXF-src-1.0.0
   apply_patch https://raw.githubusercontent.com/rdp/ffmpeg-windows-build-helpers/master/patches/libMXF.diff
   do_make "MINGW_CC_PREFIX=$cross_prefix"
-  #
-  # Manual equivalent of make install.  Enable it if desired.  We shouldn't need it in theory since we never use libMXF.a file and can just hand pluck out the *.exe files...
-  #
-  # cp libMXF/lib/libMXF.a $mingw_w64_x86_64_prefix/lib/libMXF.a
-  # cp libMXF++/libMXF++/libMXF++.a $mingw_w64_x86_64_prefix/lib/libMXF++.a
-  # mv libMXF/examples/writeaviddv50/writeaviddv50 libMXF/examples/writeaviddv50/writeaviddv50.exe
-  # mv libMXF/examples/writeavidmxf/writeavidmxf libMXF/examples/writeavidmxf/writeavidmxf.exe
-  # cp libMXF/examples/writeaviddv50/writeaviddv50.exe $mingw_w64_x86_64_prefix/bin/writeaviddv50.exe
-  # cp libMXF/examples/writeavidmxf/writeavidmxf.exe $mingw_w64_x86_64_prefix/bin/writeavidmxf.exe
   cd ..
 }
 
@@ -1296,65 +1232,16 @@ find_all_build_exes() {
 
 build_dependencies() {
   echo "PKG_CONFIG_PATH=$PKG_CONFIG_PATH" # debug
-  #build_win32_pthreads # vpx etc. depend on this--provided by the compiler build script now, so shouldn't have to build our own
-  #build_libdl # ffmpeg's frei0r implentation needs this
   build_zlib # rtmp depends on it [as well as ffmpeg's optional but handy --enable-zlib]
   build_bzlib2 # in case someone wants it [ffmpeg uses it]
-  #build_libpng # for openjpeg, needs zlib
   build_gmp # for libnettle
   build_libnettle # needs gmp
   build_iconv # mplayer I think needs it for freetype [just it though], vlc also wants it.  looks like ffmpeg can use it too...not sure what for :)
   build_gnutls # needs libnettle, can use iconv it appears
-
-  #build_frei0r
-  #build_libutvideo # Not YSTV
-  #build_libflite # too big for distro...though may still be useful
-  #build_libgsm
-  #build_sdl # needed for ffplay to be created
-  #build_libopus
-  #build_libopencore
-  #build_libogg
-  
-  #build_libspeex # needs libogg for exe's
-  #build_libvorbis # needs libogg
-  #build_libtheora # needs libvorbis, libogg
-  #build_orc
-  #build_libschroedinger # needs orc
-  #build_freetype # uses bz2/zlib seemingly
-  #build_libexpat
-  #build_libxml2
-  #build_libbluray # needs libxml2, freetype
-  #build_libjpeg_turbo # mplayer can use this, VLC qt might need it? [replaces libjpeg]
-  #build_libdvdcss
-  #build_libdvdread # vlc, mplayer use it. needs dvdcss
-  #build_libdvdnav # vlc, mplayer use this
-  #build_libxvid
-  #build_libxavs
-  #build_libsoxr
   build_libx264
-  #build_libx265
-  #build_lame
-  #build_twolame
-  #build_vidstab
-  #build_libcaca
-  #build_libmodplug # ffmepg and vlc can use this
-  #build_zvbi
-  #build_libvpx
-  #build_vo_aacenc
   build_libdecklink
-  #build_libilbc
-  #build_fontconfig # needs expat, might need freetype, can use iconv, but I believe doesn't currently
-  #build_libfribidi
-  #build_libass # needs freetype, needs fribidi, needs fontconfig
-  #build_libopenjpeg
-  #build_intel_quicksync_mfx # not windows xp friendly...
-  if [[ "$non_free" = "y" ]]; then
-    build_fdk_aac
-    # build_faac # not included for now, too poor quality output :)
-    # build_libaacplus # if you use it, conflicts with other AAC encoders <sigh>, so disabled :)
-    build_libnvenc
-  fi
-  # build_openssl # hopefully do not need it anymore, since we use gnutls everywhere, so just don't even build it anymore...
+  build_fdk_aac
+  build_libnvenc
   build_librtmp # needs gnutls [or openssl...]
 }
 
