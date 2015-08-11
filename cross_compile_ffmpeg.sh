@@ -1159,22 +1159,6 @@ build_ffmpeg() {
   local git_url="https://github.com/FFmpeg/FFmpeg.git"
   local output_dir="ffmpeg_git"
 
-  # FFmpeg + libav compatible options
-  local extra_configure_opts="--enable-iconv" # --enable-libx265 non xp friendly
-
-  extra_configure_opts="$extra_configure_opts --extra-cflags=$CFLAGS" # --extra-cflags is not needed here, but adds it to the console output which I like for debugging purposes
-
-  # can't mix and match --enable-static --enable-shared unfortunately, or the final executable seems to just use shared if the're both present
-  if [[ $shared == "shared" ]]; then
-    output_dir=${output_dir}_shared
-    final_install_dir=`pwd`/${output_dir}.installed
-    extra_configure_opts="--enable-shared --disable-static $extra_configure_opts"
-    # avoid installing this to system?
-    extra_configure_opts="$extra_configure_opts --prefix=$final_install_dir --disable-libgme" # gme broken for shared as of yet...
-  else
-    extra_configure_opts="--enable-static --disable-shared $extra_configure_opts --prefix=$mingw_w64_x86_64_prefix"
-  fi
-
   do_git_checkout $git_url ${output_dir}
   cd $output_dir
   
@@ -1186,20 +1170,7 @@ build_ffmpeg() {
 
 # add --extra-cflags=$CFLAGS, though redundant, just so that FFmpeg lists what it used in its "info" output
 
-  config_options="--arch=$arch --target-os=mingw32 --cross-prefix=$cross_prefix --pkg-config=pkg-config --enable-gpl --enable-libx264 --enable-version3 --enable-zlib --enable-librtmp --enable-gnutls  --disable-w32threads --prefix=$mingw_w64_x86_64_prefix $extra_configure_opts --extra-cflags=$CFLAGS" # other possibilities: --enable-w32threads --enable-libflite
-  if [[ "$non_free" = "y" ]]; then
-    config_options="$config_options --enable-nonfree --enable-libfdk-aac --disable-libfaac --enable-nvenc " 
-    # faac deemed too poor quality and becomes the default -- add it in and uncomment the build_faac line to include it, if anybody ever does... 
-    # To use fdk-aac in VLC, we need to change FFMPEG's default (aac), but I haven't found how to do that... So I disabled it. This could be an new option for the script? (was --disable-decoder=aac )
-    # other possible options: --enable-openssl [unneeded since we use gnutls] --enable-libaacplus [just use fdk-aac only to avoid collision]
-  fi
-
-  if [[ "$native_build" = "y" ]]; then
-    config_options="$config_options --disable-runtime-cpudetect"
-    # TODO --cpu=host ... ?
-  else
-    config_options="$config_options --enable-runtime-cpudetect"
-  fi
+  config_options="--arch=$arch --target-os=mingw32 --prefix=$mingw_w64_x86_64_prefix --cross-prefix=$cross_prefix --pkg-config=pkg-config --enable-runtime-cpudetect --enable-static --disable-shared --enable-nonfree --enable-libfdk-aac --disable-libfaac --enable-nvenc --enable-gpl --enable-libx264 --enable-version3 --enable-zlib --enable-librtmp --enable-gnutls --enable-iconv --disable-w32threads" # other possibilities: --enable-w32threads --enable-libflite
   
   do_configure "$config_options"
   rm -f */*.a */*.dll *.exe # just in case some dependency library has changed, force it to re-link even if the ffmpeg source hasn't changed...
