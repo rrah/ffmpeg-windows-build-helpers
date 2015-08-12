@@ -110,7 +110,7 @@ install_cross_compiler() {
   if [[ -z $build_choice ]]; then
     pick_compiler_flavors
   fi
-  local zeranoe_script_name=mingw-w64-build-3.6.6.preview.local
+  local zeranoe_script_name=mingw-w64-build-3.6.7.local
   if [[ -f $zeranoe_script_name ]]; then
     rm $zeranoe_script_name || exit 1
   fi
@@ -118,10 +118,14 @@ install_cross_compiler() {
   chmod u+x $zeranoe_script_name
   unset CFLAGS # don't want these for the compiler itself since it creates executables to run on the local box
   # pthreads version to avoid having to use cvs for it
-  echo "building cross compile gcc [requires working internet access] with thread count $gcc_cpu_count..."
+  echo "starting to download and build cross compile version of gcc [requires working internet access] with thread count $gcc_cpu_count..."
   echo ""
   nice ./$zeranoe_script_name --clean-build --disable-shared --default-configure  --pthreads-w32-ver=2-9-1 --cpu-count=$gcc_cpu_count --build-type=$build_choice || exit 1 # --disable-shared allows c++ to be distributed at all...which seemed necessary for some random dependency...
   export CFLAGS=$original_cflags # reset it
+  if [[ ! -f mingw-w64-i686/bin/i686-w64-mingw32-gcc && ! -f mingw-w64-x86_64/bin/x86_64-w64-mingw32-gcc ]]; then
+    echo "no gcc cross compiler(s) seem built [?] (build failure [?]) recommend nuke sandbox dir (rm -rf sandbox) and try again!"
+    exit 1
+  fi
   if [ -d mingw-w64-x86_64 ]; then
     touch mingw-w64-x86_64/compiler.done
   fi
@@ -129,11 +133,7 @@ install_cross_compiler() {
     touch mingw-w64-i686/compiler.done
   fi
   clear
-  if [[ ! -f mingw-w64-i686/bin/i686-w64-mingw32-gcc && ! -f mingw-w64-x86_64/bin/x86_64-w64-mingw32-gcc ]]; then
-    echo "no gcc cross compiler(s) built [?] build failure [?] recommend nuke sandbox dir, start over"
-    exit 1
-  fi
-  echo "Ok, done building MinGW-w64 cross-compiler(s)..."
+  echo "Ok, done building MinGW-w64 cross-compiler(s) successfully..."
 }
 
 # helper methods for downloading and building projects that can take generic input
@@ -441,7 +441,7 @@ x264_profile_guided=n # or y -- haven't gotten this working yet...
 build_libx264() {
   do_git_checkout "http://repo.or.cz/r/x264.git" "x264" "origin/stable"
   cd x264
-  local configure_flags="--host=$host_target --enable-static --cross-prefix=$cross_prefix --prefix=$mingw_w64_x86_64_prefix --enable-debug --disable-lavf" # --enable-win32thread --enable-debug shouldn't hurt us since ffmpeg strips it anyway I think
+  local configure_flags="--host=$host_target --enable-static --cross-prefix=$cross_prefix --prefix=$mingw_w64_x86_64_prefix --enable-strip --disable-lavf" # --enable-win32thread --enable-debug is another useful option here.
   
   if [[ $high_bitdepth == "y" ]]; then
     configure_flags="$configure_flags --bit-depth=10" # Enable 10 bits (main10) per pixels profile.
@@ -728,7 +728,11 @@ build_libspeex() {
 
 build_libtheora() {
   cpu_count=1 # can't handle it
-  generic_download_and_install http://downloads.xiph.org/releases/theora/libtheora-1.1.1.tar.bz2 libtheora-1.1.1
+  download_and_unpack_file http://downloads.xiph.org/releases/theora/libtheora-1.2.0alpha1.tar.gz libtheora-1.2.0alpha1
+  cd libtheora-1.2.0alpha1
+    sed -i.bak 's/double rint/double rint_disabled/' examples/encoder_example.c # double define issue [?]
+    generic_configure_make_install 
+  cd ..
   cpu_count=$original_cpu_count
 }
 
@@ -1146,10 +1150,12 @@ build_libMXF() {
 }
 
 build_libdecklink() {
-   if [[ ! -f $mingw_w64_x86_64_prefix/include/DeckLinkAPI_i.c ]]; then
+   if [[ ! -f $mingw_w64_x86_64_prefix/include/DeckLinkAPIVersion.h ]]; then
+     # smaller files don't worry about partials for now, plus we only care about the last file anyway here...
      curl -4 https://raw.githubusercontent.com/rdp/ffmpeg-windows-build-helpers/master/patches/DeckLinkAPI.h > $mingw_w64_x86_64_prefix/include/DeckLinkAPI.h  || exit 1
      curl -4 https://raw.githubusercontent.com/rdp/ffmpeg-windows-build-helpers/master/patches/DeckLinkAPI_i.c > $mingw_w64_x86_64_prefix/include/DeckLinkAPI_i.c.tmp  || exit 1
      mv $mingw_w64_x86_64_prefix/include/DeckLinkAPI_i.c.tmp $mingw_w64_x86_64_prefix/include/DeckLinkAPI_i.c
+     curl -4 https://raw.githubusercontent.com/rdp/ffmpeg-windows-build-helpers/master/patches/DeckLinkAPIVersion.h > $mingw_w64_x86_64_prefix/include/DeckLinkAPIVersion.h  || exit 1
   fi
 }
 
