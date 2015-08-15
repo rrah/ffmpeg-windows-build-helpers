@@ -1176,7 +1176,7 @@ build_ffmpeg() {
 
 # add --extra-cflags=$CFLAGS, though redundant, just so that FFmpeg lists what it used in its "info" output
 
-  config_options="--arch=$arch --target-os=mingw32 --prefix=$mingw_w64_x86_64_prefix --cross-prefix=$cross_prefix --pkg-config=pkg-config --enable-runtime-cpudetect --enable-static --disable-shared --enable-nonfree --enable-libfdk-aac --disable-libfaac --enable-nvenc --enable-gpl --enable-libx264 --enable-version3 --enable-zlib --enable-librtmp --enable-gnutls --enable-iconv --disable-w32threads" # other possibilities: --enable-w32threads --enable-libflite
+  config_options="--arch=$arch --target-os=mingw32 --prefix=$mingw_w64_x86_64_prefix --cross-prefix=$cross_prefix --pkg-config=pkg-config --enable-runtime-cpudetect --enable-static --disable-shared --enable-nonfree --enable-libfdk-aac --disable-libfaac --enable-nvenc --enable-gpl --enable-libx264 --enable-version3 --enable-zlib --enable-librtmp --enable-gnutls --enable-iconv --enable-libmfx --disable-w32threads" # other possibilities: --enable-w32threads --enable-libflite
   
   do_configure "$config_options"
   rm -f */*.a */*.dll *.exe # just in case some dependency library has changed, force it to re-link even if the ffmpeg source hasn't changed...
@@ -1220,6 +1220,8 @@ build_dependencies() {
   build_fdk_aac
   build_libnvenc
   build_librtmp # needs gnutls [or openssl...]
+  build_intel_quicksync_mfx
+  build_libMXF
 }
 
 build_apps() {
