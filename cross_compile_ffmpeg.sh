@@ -34,10 +34,10 @@ set_box_memory_size_bytes() {
 }
 
 check_missing_packages () {
-  local check_packages=('curl' 'pkg-config' 'make' 'git' 'svn' 'cmake' 'gcc' 'autoconf' 'automake' 'yasm' 'cvs' 'flex' 'bison' 'makeinfo' 'g++' 'ed' 'hg' 'pax' 'unzip')
+  local check_packages=('curl' 'pkg-config' 'make' 'git' 'svn' 'cmake' 'gcc' 'autoconf' 'automake' 'yasm' 'cvs' 'flex' 'bison' 'makeinfo' 'g++' 'ed' 'hg' 'pax' 'unzip' 'patch')
   # libtool check is wonky...
   if [[ $OSTYPE == darwin* ]]; then 
-    check_packages+=(glibtoolize)
+    check_packages+=(glibtoolize) # homebrew special :|
   else
     check_packages+=(libtoolize)
   fi
@@ -120,7 +120,8 @@ install_cross_compiler() {
   # pthreads version to avoid having to use cvs for it
   echo "starting to download and build cross compile version of gcc [requires working internet access] with thread count $gcc_cpu_count..."
   echo ""
-  nice ./$zeranoe_script_name --clean-build --disable-shared --default-configure  --pthreads-w32-ver=2-9-1 --cpu-count=$gcc_cpu_count --build-type=$build_choice || exit 1 # --disable-shared allows c++ to be distributed at all...which seemed necessary for some random dependency...
+  # --disable-shared allows c++ to be distributed at all...which seemed necessary for some random dependency...
+  nice ./$zeranoe_script_name --clean-build --disable-shared --default-configure  --pthreads-w32-ver=2-9-1 --cpu-count=$gcc_cpu_count --build-type=$build_choice --gcc-ver=5.2.0 || exit 1 
   export CFLAGS=$original_cflags # reset it
   if [[ ! -f mingw-w64-i686/bin/i686-w64-mingw32-gcc && ! -f mingw-w64-x86_64/bin/x86_64-w64-mingw32-gcc ]]; then
     echo "no gcc cross compiler(s) seem built [?] (build failure [?]) recommend nuke sandbox dir (rm -rf sandbox) and try again!"
@@ -638,7 +639,7 @@ build_libgsm() {
   download_and_unpack_file http://www.quut.com/gsm/gsm-1.0.13.tar.gz gsm-1.0-pl13
   cd gsm-1.0-pl13
   apply_patch https://raw.githubusercontent.com/rdp/ffmpeg-windows-build-helpers/master/patches/libgsm.patch # for openssl to work with it, I think?
-  # not do_make here since this actually fails [in error]
+  # not do_make here since this actually fails [wrongly]
   make CC=${cross_prefix}gcc AR=${cross_prefix}ar RANLIB=${cross_prefix}ranlib INSTALL_ROOT=${mingw_w64_x86_64_prefix}
   cp lib/libgsm.a $mingw_w64_x86_64_prefix/lib || exit 1
   mkdir -p $mingw_w64_x86_64_prefix/include/gsm
@@ -775,7 +776,7 @@ build_libxml2() {
 
 build_libbluray() {
   generic_download_and_install ftp://ftp.videolan.org/pub/videolan/libbluray/0.7.0/libbluray-0.7.0.tar.bz2 libbluray-0.7.0
-  sed -i.bak 's/-lbluray.*$/-lbluray -lfreetype -lexpat -lz -lbz2 -lxml2/' "$PKG_CONFIG_PATH/libbluray.pc" # not sure...is this a blu-ray bug, or VLC's problem in not pulling freetype's .pc file? or our problem with not using pkg-config --static ...
+  sed -i.bak 's/-lbluray.*$/-lbluray -lfreetype -lexpat -lz -lbz2 -lxml2 -lws2_32 -liconv/' "$PKG_CONFIG_PATH/libbluray.pc" # not sure...is this a blu-ray bug, or VLC's problem in not pulling freetype's .pc file? or our problem with not using pkg-config --static ...
 }
 
 build_libschroedinger() {
@@ -924,7 +925,13 @@ build_libexpat() {
 }
 
 build_iconv() {
-  generic_download_and_install http://ftp.gnu.org/pub/gnu/libiconv/libiconv-1.14.tar.gz libiconv-1.14
+  download_and_unpack_file http://ftp.gnu.org/pub/gnu/libiconv/libiconv-1.14.tar.gz libiconv-1.14
+  cd libiconv-1.14
+    export CFLAGS=-O2 
+    generic_configure
+    do_make_and_make_install
+    unset CFLAGS
+  cd ..
 }
 
 build_freetype() {
@@ -976,7 +983,7 @@ build_zvbi() {
     cd src
       do_make_and_make_install 
     cd ..
-#   there is no .pc for zvbi, so we add --extra-libs=-lpng to FFmpegs configure
+#   there is no .pc for zvbi, so we add --extra-libs=-lpng to FFmpegs configure TODO there is a .pc file it just doesn't get installed [?]
 #   sed -i.bak 's/-lzvbi *$/-lzvbi -lpng/' "$PKG_CONFIG_PATH/zvbi.pc"
   cd ..
   export CFLAGS=$original_cflags # it was set to the win32-pthreads ones, so revert it
@@ -1174,9 +1181,17 @@ build_ffmpeg() {
    local arch=x86_64
   fi
 
-# add --extra-cflags=$CFLAGS, though redundant, just so that FFmpeg lists what it used in its "info" output
+
 
   config_options="--arch=$arch --target-os=mingw32 --prefix=$mingw_w64_x86_64_prefix --cross-prefix=$cross_prefix --pkg-config=pkg-config --enable-runtime-cpudetect --enable-static --disable-shared --enable-nonfree --enable-libfdk-aac --disable-libfaac --enable-nvenc --enable-gpl --enable-libx264 --enable-version3 --enable-zlib --enable-librtmp --enable-gnutls --enable-iconv --enable-libmfx --disable-w32threads" # other possibilities: --enable-w32threads --enable-libflite
+
+  do_debug_build=n # if you need one for gdb.exe ...
+  if [[ "$do_debug_build" = "y" ]]; then
+    # not sure how many of these are actually needed/useful...possibly none LOL
+    config_options="$config_options --disable-optimizations --extra-cflags=-Og --extra-cflags=-fno-omit-frame-pointer --enable-debug=3 --extra-cflags=-fno-inline $postpend_configure_opts"
+    # this one kills gdb for static what? ai ai [?]
+    config_options="$config_options --disable-libgme"
+  fi
   
   do_configure "$config_options"
   rm -f */*.a */*.dll *.exe # just in case some dependency library has changed, force it to re-link even if the ffmpeg source hasn't changed...
